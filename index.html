@@ -273,7 +273,7 @@ function Budget({ monthKey, setMonthKey }){
       </div>
 
       <div className="card">
-        <h3>Envelopes</h3>
+        <h3>Spending Categories</h3>
         {data.envelopes.map(e=>{
           const spent = e.txns.reduce((s,t)=>s+num(t.amount),0);
           const planned = num(e.planned);
@@ -306,7 +306,7 @@ function Budget({ monthKey, setMonthKey }){
       <div className="card">
         <div className="balancebox">
           <div className="amt">{money(totals.balance)}</div>
-          <div className="sub">Left after envelopes (before spending)</div>
+          <div className="sub">Left after spending categories (before spending)</div>
         </div>
       </div>
 
