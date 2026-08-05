@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>The Ledger &amp; The Float</title>
+<title>Budget Tracker</title>
 
 <!-- PWA wiring -->
 <link rel="manifest" href="/manifest.json" />
@@ -193,86 +193,25 @@ function gradeLedger(monthKey){
   if(!hasTxns) return null;
   return scoreToHue(badnessToScore(overCount, overFracTotal));
 }
-function gradeFloat(monthKey){
-  const d = store.get(`allowance:${monthKey}`);
-  if(!d) return null;
-  let hasTxns = false, overCount = 0, overFracTotal = 0;
-  d.cards.forEach(c=>{
-    const spent = c.charges.reduce((s,t)=>s+num(t.amount),0);
-    if(c.charges.length>0) hasTxns = true;
-    const target = num(c.limit) * (num(c.targetPct)/100);
-    if(target>0 && spent>target){
-      overCount++;
-      overFracTotal += (spent-target)/target;
-    }
-  });
-  if(!hasTxns) return null;
-  return scoreToHue(badnessToScore(overCount, overFracTotal));
-}
 
 /* ===================== LEDGER DEFAULTS ===================== */
-// Starting template — fully editable. Add/remove income rows and envelopes freely;
-// each envelope can optionally be flagged to skip in December (e.g. seasonal expenses).
+// Starting template — fully editable. Add/remove income rows and envelopes freely.
 function freshBudget(monthKey){
-  const inDecember = isDecember(monthKey);
-  const mk = (label, planned, skipDecember) => ({
-    id:uid(), label, planned:(skipDecember && inDecember) ? 0 : planned, skipDecember: !!skipDecember, txns:[]
-  });
+  const mk = (label, planned) => ({ id:uid(), label, planned, txns:[] });
   return {
     income:[{ id:uid(), label:"Paycheck", amount:2135 }],
     envelopes:[
-      mk("Savings", 150, false),
-      mk("Gas", 120, false),
-      mk("Groceries", 200, false),
-      mk("Miscellaneous", 0, false),
+      mk("Savings", 150),
+      mk("Gas", 120),
+      mk("Groceries", 200),
+      mk("Miscellaneous", 0),
     ],
   };
 }
 function loadBudget(monthKey){
   const d = store.get(`ledger:${monthKey}`);
   if(!d) return freshBudget(monthKey);
-  d.envelopes.forEach(e=>{ if(typeof e.skipDecember === "undefined") e.skipDecember = false; });
   if(!d.income) d.income = freshBudget(monthKey).income;
-  return d;
-}
-
-/* ===================== FLOAT DEFAULTS ===================== */
-const ALLOWANCE = 670;
-function freshFloat(){
-  return {
-    allowance: ALLOWANCE,
-    checkingNote: "Miscellaneous",
-    cards:[
-      { id:uid(), label:"Prime Visa", limit:1000, targetPct:20, charges:[],
-        allocations:[
-          { id:uid(), label:"Groceries", amount:200 },
-        ] },
-      { id:uid(), label:"Discover", limit:1500, targetPct:5, charges:[],
-        allocations:[
-          { id:uid(), label:"Gas", amount:75 },
-        ] },
-    ],
-    memberships:[
-      { id:uid(), label:"Amazon Prime", amount:7.49 },
-      { id:uid(), label:"Lagster", amount:3.43 },
-      { id:uid(), label:"Epic Games", amount:12.95 },
-      { id:uid(), label:"Twitch Turbo", amount:12 },
-      { id:uid(), label:"Uber One", amount:4.99 },
-      { id:uid(), label:"Claude", amount:20 },
-    ],
-    saves:[
-      { id:uid(), label:"Savings", amount:150 },
-      { id:uid(), label:"Brokerage", amount:20 },
-      { id:uid(), label:"Tithe", amount:67 },
-    ],
-  };
-}
-function loadFloat(monthKey){
-  const d = store.get(`allowance:${monthKey}`);
-  if(!d) return freshFloat();
-  if(!d.memberships) d.memberships = freshFloat().memberships;
-  if(!d.checkingNote) d.checkingNote = "Eating out";
-  d.cards.forEach(c=>{ if(!c.allocations) c.allocations = []; });
   return d;
 }
 
@@ -316,8 +255,7 @@ function Budget({ monthKey, setMonthKey }){
   const delIncome = (id) => update((d)=>d.income=d.income.filter(i=>i.id!==id));
   const setPlanned = (id,v) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.planned=v; });
   const setEnvLabel = (id,v) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.label=v; });
-  const toggleSkipDecember = (id) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.skipDecember = !e.skipDecember; });
-  const addEnvelope = () => update((d)=>d.envelopes.push({id:uid(),label:"New category",planned:0,skipDecember:false,txns:[]}));
+  const addEnvelope = () => update((d)=>d.envelopes.push({id:uid(),label:"New category",planned:0,txns:[]}));
   const delEnvelope = (id) => update((d)=>d.envelopes=d.envelopes.filter(e=>e.id!==id));
   const addTxn = (envId,amt,label) => update((d)=>{ const e=d.envelopes.find(x=>x.id===envId); if(e && num(amt)!==0) e.txns.unshift({id:uid(),amount:num(amt),label:label||"Entry"}); });
   const delTxn = (envId,txId) => update((d)=>{ const e=d.envelopes.find(x=>x.id===envId); if(e) e.txns=e.txns.filter(t=>t.id!==txId); });
@@ -354,10 +292,6 @@ function Budget({ monthKey, setMonthKey }){
                 <div className="planned"><input type="number" value={e.planned} onChange={ev=>setPlanned(e.id,ev.target.value)} /></div>
                 <button className="del" onClick={()=>delEnvelope(e.id)}>×</button>
               </div>
-              <label style={{display:"flex", alignItems:"center", gap:6, fontSize:11, color:"var(--text-dim)", marginBottom:6}}>
-                <input type="checkbox" style={{width:"auto"}} checked={!!e.skipDecember} onChange={()=>toggleSkipDecember(e.id)} />
-                Skip this category in December
-              </label>
               <div className="bar"><div style={{width:pct+"%", background: over?"var(--red)":"var(--gold)"}}></div></div>
               <div className="envmeta">
                 <span>{money(spent)} of {money(planned)}</span>
@@ -402,144 +336,6 @@ function TxnLogger({ onAdd }){
   );
 }
 
-/* ===================== FLOAT (The Float) ===================== */
-function Float({ monthKey, setMonthKey }){
-  const [data, setData] = useState(() => loadFloat(monthKey));
-  const first = useRef(true);
-
-  useEffect(() => { setData(loadFloat(monthKey)); first.current = true; }, [monthKey]);
-  useEffect(() => {
-    if (first.current) { first.current = false; return; }
-    store.set(`allowance:${monthKey}`, data);
-  }, [data, monthKey]);
-
-  const totals = useMemo(() => {
-    const cardTargets = data.cards.reduce((s,c)=>s+num(c.limit)*(num(c.targetPct)/100),0);
-    const saves = data.saves.reduce((s,x)=>s+num(x.amount),0);
-    const memberships = data.memberships.reduce((s,x)=>s+num(x.amount),0);
-    const checking = num(data.allowance) - cardTargets - saves - memberships;
-    return { cardTargets, saves, memberships, checking };
-  }, [data]);
-
-  const update = (fn) => setData((d) => { const c = JSON.parse(JSON.stringify(d)); fn(c); return c; });
-  const setCardField = (id,field,v) => update(d=>{ const c=d.cards.find(x=>x.id===id); if(c) c[field]=v; });
-  const addCharge = (cardId,amt,label) => update(d=>{ const c=d.cards.find(x=>x.id===cardId); if(c && num(amt)!==0) c.charges.unshift({id:uid(),amount:num(amt),label:label||"Charge"}); });
-  const delCharge = (cardId,chId) => update(d=>{ const c=d.cards.find(x=>x.id===cardId); if(c) c.charges=c.charges.filter(t=>t.id!==chId); });
-  const addCard = () => update(d=>d.cards.push({id:uid(),label:"New card",limit:0,targetPct:0,charges:[],allocations:[]}));
-  const delCard = (id) => update(d=>d.cards=d.cards.filter(c=>c.id!==id));
-  const setSave = (id,v) => update(d=>{ const s=d.saves.find(x=>x.id===id); if(s) s.amount=v; });
-  const setSaveLabel = (id,v) => update(d=>{ const s=d.saves.find(x=>x.id===id); if(s) s.label=v; });
-  const addSave = () => update(d=>d.saves.push({id:uid(),label:"New allocation",amount:0}));
-  const delSave = (id) => update(d=>d.saves=d.saves.filter(s=>s.id!==id));
-  const setMembership = (id,v) => update(d=>{ const m=d.memberships.find(x=>x.id===id); if(m) m.amount=v; });
-  const setMembershipLabel = (id,v) => update(d=>{ const m=d.memberships.find(x=>x.id===id); if(m) m.label=v; });
-  const addMembership = () => update(d=>d.memberships.push({id:uid(),label:"New membership",amount:0}));
-  const delMembership = (id) => update(d=>d.memberships=d.memberships.filter(m=>m.id!==id));
-  const setAllowance = (v) => update(d=>{ d.allowance = v; });
-  const setCheckingNote = (v) => update(d=>{ d.checkingNote = v; });
-  const resetMonth = () => { if (window.confirm(`Reset ${labelOf(monthKey)} back to the starting plan?`)) setData(freshFloat()); };
-
-  return (
-    <div>
-      <MonthStrip monthKey={monthKey} setMonthKey={setMonthKey} />
-
-      <div className="card">
-        <h3>Allowance</h3>
-        <div className="row">
-          <div className="lbl">Monthly allowance</div>
-          <div className="val"><input type="number" value={data.allowance} onChange={e=>setAllowance(e.target.value)} /></div>
-        </div>
-      </div>
-
-      {data.cards.map(c=>{
-        const spent = c.charges.reduce((s,t)=>s+num(t.amount),0);
-        const target = num(c.limit)*(num(c.targetPct)/100);
-        const pct = target>0 ? Math.min(100,(spent/target)*100) : 0;
-        const over = target>0 && spent>target;
-        const allocTotal = (c.allocations||[]).reduce((s,a)=>s+num(a.amount),0);
-        const fullyAssigned = Math.abs(allocTotal-target) < 0.01;
-        return (
-          <div className="card" key={c.id}>
-            <div className="row" style={{marginBottom:6}}>
-              <input className="lbl" style={{flex:1.4, fontWeight:700, color:"var(--gold)"}} value={c.label} onChange={e=>setCardField(c.id,"label",e.target.value)} />
-              <button className="del" onClick={()=>delCard(c.id)}>×</button>
-            </div>
-            <div className="row">
-              <div className="lbl">Limit</div>
-              <div className="val"><input type="number" value={c.limit} onChange={e=>setCardField(c.id,"limit",e.target.value)} /></div>
-            </div>
-            <div className="row">
-              <div className="lbl">Target %</div>
-              <div className="val"><input type="number" value={c.targetPct} onChange={e=>setCardField(c.id,"targetPct",e.target.value)} /></div>
-            </div>
-            <div className="bar"><div style={{width:pct+"%", background: over?"var(--red)":"var(--gold)"}}></div></div>
-            <div className="envmeta">
-              <span>{money(spent)} of {money(target)} target</span>
-              <span style={{color: over?"var(--red)":"var(--text-dim)"}}>{over ? `Over by ${money(spent-target)}` : `${money(target-spent)} left`}</span>
-            </div>
-            {c.allocations && c.allocations.length>0 && (
-              <div style={{marginTop:8, fontSize:12, color:"var(--text-dim)"}}>
-                Planned for: {c.allocations.map(a=>`${a.label} ${money(a.amount)}`).join(" · ")}
-                <span style={{color: fullyAssigned ? "var(--green)" : "var(--red)", marginLeft:6}}>
-                  {fullyAssigned ? "(fully assigned)" : `(${allocTotal>target?"over":"under"} by ${money(Math.abs(allocTotal-target))})`}
-                </span>
-              </div>
-            )}
-            <TxnLogger onAdd={(amt,label)=>addCharge(c.id,amt,label)} />
-            {c.charges.length>0 && (
-              <ul className="txns">{c.charges.map(t=>(
-                <li key={t.id}><span>{t.label}</span><span style={{display:"flex",alignItems:"center",gap:6}}>{money(t.amount)}<button onClick={()=>delCharge(c.id,t.id)}>×</button></span></li>
-              ))}</ul>
-            )}
-          </div>
-        );
-      })}
-
-      <button className="addbtn" onClick={addCard} style={{marginBottom:14}}>+ Add card</button>
-
-      <div className="card">
-        <h3>Memberships</h3>
-        {data.memberships.map(m=>(
-          <div className="row" key={m.id}>
-            <input className="lbl" style={{flex:1.4}} value={m.label} onChange={e=>setMembershipLabel(m.id,e.target.value)} />
-            <div className="val"><input type="number" value={m.amount} onChange={e=>setMembership(m.id,e.target.value)} /></div>
-            <button className="del" onClick={()=>delMembership(m.id)}>×</button>
-          </div>
-        ))}
-        <button className="addbtn" onClick={addMembership}>+ Add membership</button>
-        <div className="totalline"><span>Total memberships</span><b>{money(totals.memberships)}</b></div>
-      </div>
-
-      <div className="card">
-        <h3>Savings &amp; Other Allocations</h3>
-        {data.saves.map(s=>(
-          <div className="row" key={s.id}>
-            <input className="lbl" style={{flex:1.4}} value={s.label} onChange={e=>setSaveLabel(s.id,e.target.value)} />
-            <div className="val"><input type="number" value={s.amount} onChange={e=>setSave(s.id,e.target.value)} /></div>
-            <button className="del" onClick={()=>delSave(s.id)}>×</button>
-          </div>
-        ))}
-        <button className="addbtn" onClick={addSave}>+ Add allocation</button>
-      </div>
-
-      <div className="card">
-        <div className="balancebox">
-          <div className="amt">{money(totals.checking)}</div>
-          <div className="sub">Left in checking</div>
-        </div>
-        <div className="row" style={{marginTop:8}}>
-          <div className="lbl">Label this leftover</div>
-          <div className="val"><input value={data.checkingNote||""} onChange={e=>setCheckingNote(e.target.value)} /></div>
-        </div>
-      </div>
-
-      <div className="footerbar">
-        <button onClick={resetMonth}>Reset this month</button>
-      </div>
-    </div>
-  );
-}
-
 /* ===================== PROGRESS OVERVIEW ===================== */
 function monthsWithData(prefix){
   const keys = new Set();
@@ -549,11 +345,9 @@ function monthsWithData(prefix){
   }
   return keys;
 }
-function Progress({ which, jumpTo }){
-  const grade = which === "ledger" ? gradeLedger : gradeFloat;
-  const prefix = which === "ledger" ? "ledger:" : "allowance:";
+function Progress({ jumpTo }){
   const tk = todayKey();
-  const found = Array.from(monthsWithData(prefix));
+  const found = Array.from(monthsWithData("ledger:"));
   found.push(tk); // always include current month even if not logged yet
   const uniqueSorted = Array.from(new Set(found)).sort((a,b)=>cmpKey(a,b));
   // fill any gaps between earliest and latest so the grid reads as a continuous timeline
@@ -566,10 +360,10 @@ function Progress({ which, jumpTo }){
 
   return (
     <div className="card">
-      <h3>Progress · {which === "ledger" ? "The Ledger" : "The Float"}</h3>
+      <h3>Progress</h3>
       <div className="progress-grid">
         {months.map(mk=>{
-          const hue = grade(mk);
+          const hue = gradeLedger(mk);
           return (
             <div key={mk} className={"pchip" + (mk===tk ? " current":"")} onClick={()=>jumpTo(mk)} style={{cursor:"pointer"}}>
               <div className="dot" style={{background: hue===null ? "#3a3a3a" : hueToColor(hue)}}></div>
@@ -610,14 +404,10 @@ function InstallBanner(){
 
 /* ===================== SHELL ===================== */
 function App(){
-  const [tab, setTab] = useState(() => store.get("activeTab") || "budget");
-  const [ledgerMonth, setLedgerMonth] = useState(() => store.get("ledgerMonth") || todayKey());
-  const [floatMonth, setFloatMonth] = useState(() => store.get("floatMonth") || todayKey());
+  const [month, setMonth] = useState(() => store.get("month") || todayKey());
   const [showProgress, setShowProgress] = useState(false);
 
-  useEffect(() => { store.set("activeTab", tab); }, [tab]);
-  useEffect(() => { store.set("ledgerMonth", ledgerMonth); }, [ledgerMonth]);
-  useEffect(() => { store.set("floatMonth", floatMonth); }, [floatMonth]);
+  useEffect(() => { store.set("month", month); }, [month]);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -627,27 +417,15 @@ function App(){
 
   return (
     <div className="shell">
-      <div className="switch">
-        <button className={tab==="budget"?"on":""} onClick={()=>{setTab("budget"); setShowProgress(false);}}>The Ledger</button>
-        <button className={tab==="float"?"on":""} onClick={()=>{setTab("float"); setShowProgress(false);}}>The Float</button>
-      </div>
-      <div className="tabs2">
+      <div className="tabs2" style={{marginTop:4}}>
         <button className={!showProgress?"on":""} onClick={()=>setShowProgress(false)}>This month</button>
         <button className={showProgress?"on":""} onClick={()=>setShowProgress(true)}>Progress</button>
       </div>
 
       {showProgress ? (
-        <Progress
-          which={tab}
-          jumpTo={(mk)=>{
-            if(tab==="budget") setLedgerMonth(mk); else setFloatMonth(mk);
-            setShowProgress(false);
-          }}
-        />
-      ) : tab==="budget" ? (
-        <Budget monthKey={ledgerMonth} setMonthKey={setLedgerMonth} />
+        <Progress jumpTo={(mk)=>{ setMonth(mk); setShowProgress(false); }} />
       ) : (
-        <Float monthKey={floatMonth} setMonthKey={setFloatMonth} />
+        <Budget monthKey={month} setMonthKey={setMonth} />
       )}
 
       <InstallBanner />
