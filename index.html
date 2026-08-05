@@ -195,17 +195,11 @@ function gradeLedger(monthKey){
 }
 
 /* ===================== LEDGER DEFAULTS ===================== */
-// Starting template — fully editable. Add/remove income rows and envelopes freely.
+// Blank starting template — nothing preset. Add your own income sources and categories.
 function freshBudget(monthKey){
-  const mk = (label, planned) => ({ id:uid(), label, planned, txns:[] });
   return {
-    income:[{ id:uid(), label:"Paycheck", amount:0 }],
-    envelopes:[
-      mk("Savings", 150),
-      mk("Gas", 120),
-      mk("Groceries", 200),
-      mk("Miscellaneous", 0),
-    ],
+    income:[{ id:uid(), label:"Income", amount:0 }],
+    envelopes:[],
   };
 }
 function loadBudget(monthKey){
