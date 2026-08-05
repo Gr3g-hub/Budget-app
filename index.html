@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>The Ledger &amp; The Float</title>
+
+<!-- PWA wiring -->
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0d0d0d" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Money" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
+<link rel="icon" href="/icon-192.png" />
+
+<style>
+  :root{
+    --bg:#0d0d0d; --panel:#161616; --panel2:#1d1d1d; --line:#2a2a2a;
+    --gold:#d4af37; --gold-dim:#8a7226; --text:#f2f0ea; --text-dim:#a7a39a;
+    --red:#e0453f; --green:#3fae5a;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    overscroll-behavior-y:none;
+    padding-top:var(--safe-top); padding-bottom:var(--safe-bottom);
+    min-height:100%;
+  }
+  #root{min-height:100%; display:flex; flex-direction:column;}
+  input, button{ font-family:inherit; }
+  input{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:9px 10px; font-size:16px; width:100%;
+  }
+  input:focus{ outline:none; border-color:var(--gold-dim); }
+  button{ cursor:pointer; border:none; }
+
+  .shell{ max-width:640px; margin:0 auto; width:100%; padding:14px 14px 40px; flex:1; }
+
+  .switch{ display:flex; gap:8px; margin-bottom:14px; position:sticky; top:var(--safe-top); z-index:5; background:var(--bg); padding-top:4px; }
+  .switch button{
+    flex:1; padding:11px 0; border-radius:12px; background:var(--panel);
+    color:var(--text-dim); font-weight:600; font-size:14px; letter-spacing:.02em;
+    border:1px solid var(--line);
+  }
+  .switch button.on{ background:linear-gradient(160deg,#2a2313,#191913); color:var(--gold); border-color:var(--gold-dim); }
+
+  .tabs2{ display:flex; gap:8px; margin-bottom:14px; }
+  .tabs2 button{
+    flex:1; padding:8px 0; border-radius:10px; background:var(--panel);
+    color:var(--text-dim); font-size:13px; border:1px solid var(--line);
+  }
+  .tabs2 button.on{ background:var(--panel2); color:var(--gold); border-color:var(--gold-dim); }
+
+  .monthstrip{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .monthstrip .arrow{
+    width:38px; height:38px; border-radius:10px; background:var(--panel);
+    color:var(--gold); font-size:18px; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--line); flex-shrink:0;
+  }
+  .monthstrip .center{ flex:1; text-align:center; }
+  .monthstrip .mlabel{ font-size:17px; font-weight:700; }
+  .monthstrip .today{
+    font-size:11px; color:var(--gold-dim); background:transparent; border:none;
+    text-decoration:underline; padding:2px 0; margin-top:2px;
+  }
+
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:14px; margin-bottom:14px; }
+  .card h3{ margin:0 0 10px; font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--gold); font-weight:700; }
+
+  .row{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .row .lbl{ flex:1.4; font-size:14px; color:var(--text-dim); }
+  .row .val{ flex:1; }
+  .row .del{ background:transparent; color:#6a6a6a; font-size:18px; width:26px; flex-shrink:0; }
+
+  .totalline{ display:flex; justify-content:space-between; padding-top:8px; margin-top:4px; border-top:1px solid var(--line); font-size:14px; }
+  .totalline b{ color:var(--gold); }
+
+  .addbtn{ background:var(--panel2); color:var(--gold); border:1px dashed var(--gold-dim); border-radius:10px; padding:8px; width:100%; font-size:13px; margin-top:4px; }
+
+  .envelope{ border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:10px; }
+  .envelope:last-child{ border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .envhead{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .envhead .name{ flex:1.4; font-size:14px; font-weight:600; }
+  .envhead .planned{ flex:1; }
+  .bar{ height:7px; border-radius:5px; background:#2a2a2a; overflow:hidden; margin:6px 0; }
+  .bar > div{ height:100%; border-radius:5px; transition:width .2s; }
+  .envmeta{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim); }
+  .logrow{ display:flex; gap:6px; margin-top:8px; }
+  .logrow input[type="number"]{ flex:0 0 90px; }
+  .logrow button{ background:var(--gold); color:#1a1a1a; border-radius:8px; padding:0 12px; font-weight:700; font-size:13px; }
+  .txns{ list-style:none; margin:8px 0 0; padding:0; }
+  .txns li{ display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-dim); padding:3px 0; }
+  .txns button{ background:transparent; color:#6a6a6a; font-size:15px; padding:0 4px; }
+
+  .balancebox{ text-align:center; padding:6px 0 2px; }
+  .balancebox .amt{ font-size:26px; font-weight:800; color:var(--gold); }
+  .balancebox .sub{ font-size:12px; color:var(--text-dim); margin-top:2px; }
+
+  /* Progress grid */
+  .progress-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .pchip{
+    aspect-ratio:1; border-radius:12px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; border:1px solid var(--line);
+    background:var(--panel2); font-size:11px; color:var(--text-dim); gap:2px;
+  }
+  .pchip.current{ border-color:var(--gold); }
+  .pchip .dot{ width:10px; height:10px; border-radius:50%; }
+  .pchip .m{ font-weight:700; color:var(--text); font-size:12px; }
+  .legend{ display:flex; gap:12px; justify-content:center; margin-top:12px; font-size:11px; color:var(--text-dim); flex-wrap:wrap; }
+  .legend span{ display:flex; align-items:center; gap:4px; }
+  .legend .dot{ width:9px; height:9px; border-radius:50%; }
+
+  .footerbar{ display:flex; gap:8px; margin-top:6px; }
+  .footerbar button{ flex:1; background:var(--panel2); color:var(--text-dim); border:1px solid var(--line); border-radius:10px; padding:8px 0; font-size:12px; }
+
+  .install-banner{
+    position:fixed; left:14px; right:14px; bottom:calc(14px + var(--safe-bottom));
+    background:var(--panel); border:1px solid var(--gold-dim); border-radius:14px;
+    padding:12px 14px; display:flex; align-items:center; gap:10px; z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  .install-banner .txt{ flex:1; font-size:12.5px; color:var(--text-dim); line-height:1.4; }
+  .install-banner button{ background:var(--gold); color:#1a1a1a; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:700; flex-shrink:0; }
+  .install-banner .x{ background:transparent; color:#6a6a6a; font-size:16px; padding:0 4px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ===================== STORAGE ===================== */
+const store = {
+  get(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e){ return null; } },
+  set(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); } catch(e){} },
+};
+
+/* ===================== MONTH MATH (infinite, no fixed array) ===================== */
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const START_KEY = "2026-08";   // first tracked month
+const GRAD_KEY  = "2029-05";   // last tuition-bearing month (graduation)
+
+function keyOf(y,m){ return `${y}-${String(m).padStart(2,"0")}`; }
+function partsOf(key){ const [y,m] = key.split("-").map(Number); return {y,m}; }
+function labelOf(key){ const {y,m} = partsOf(key); return `${MONTH_NAMES[m-1]} ${y}`; }
+function addMonths(key, n){
+  let {y,m} = partsOf(key);
+  m += n;
+  y += Math.floor((m-1)/12);
+  m = ((m-1)%12+12)%12 + 1;
+  return keyOf(y,m);
+}
+function cmpKey(a,b){ return a === b ? 0 : (a < b ? -1 : 1); }
+function todayKey(){ const d = new Date(); return keyOf(d.getFullYear(), d.getMonth()+1); }
+function isDecember(key){ return key.endsWith("-12"); }
+function isTuitionMonth(key){
+  if (cmpKey(key, START_KEY) < 0) return false;
+  if (cmpKey(key, GRAD_KEY) > 0) return false;
+  if (isDecember(key)) return false;
+  return true;
+}
+
+const uid = () => Math.random().toString(36).slice(2,9);
+const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const money = (n) => (n<0?"-":"") + "$" + Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const pctText = (n) => (Math.round(n*10)/10).toFixed(1) + "%";
+
+/* ===================== GRADING (ported from prior version) ===================== */
+function badnessToScore(overCount, overFrac){
+  const countTerm = overCount===0 ? 0 : (0.4 + 0.15*(overCount-1));
+  const magTerm = Math.min(0.6, overFrac);
+  return 1 - Math.min(1, countTerm + magTerm);
+}
+function scoreToHue(score){ const s = Math.max(0, Math.min(1, score)); return Math.round(125*(s*s)); }
+function hueToColor(hue){ return `hsl(${hue}, 62%, 45%)`; }
+
+function gradeLedger(monthKey){
+  const d = store.get(`ledger:${monthKey}`);
+  if(!d) return null;
+  let hasTxns = false, overCount = 0, overFracTotal = 0;
+  d.envelopes.forEach(e=>{
+    const spent = e.txns.reduce((s,t)=>s+num(t.amount),0);
+    if(e.txns.length>0) hasTxns = true;
+    const planned = num(e.planned);
+    if(planned>0 && spent>planned){
+      overCount++;
+      overFracTotal += (spent-planned)/planned;
+    }
+  });
+  if(!hasTxns) return null;
+  return scoreToHue(badnessToScore(overCount, overFracTotal));
+}
+function gradeFloat(monthKey){
+  const d = store.get(`allowance:${monthKey}`);
+  if(!d) return null;
+  let hasTxns = false, overCount = 0, overFracTotal = 0;
+  d.cards.forEach(c=>{
+    const spent = c.charges.reduce((s,t)=>s+num(t.amount),0);
+    if(c.charges.length>0) hasTxns = true;
+    const target = num(c.limit) * (num(c.targetPct)/100);
+    if(target>0 && spent>target){
+      overCount++;
+      overFracTotal += (spent-target)/target;
+    }
+  });
+  if(!hasTxns) return null;
+  return scoreToHue(badnessToScore(overCount, overFracTotal));
+}
+
+/* ===================== LEDGER DEFAULTS ===================== */
+function freshBudget(monthKey){
+  const tuition = isTuitionMonth(monthKey) ? 1503.83 : 0;
+  return {
+    income:[{ id:uid(), label:"Paycheck", amount:2135 }],
+    envelopes:[
+      { id:uid(), label:"Tuition (20th)", planned:tuition, kind:"fixed", txns:[] },
+      { id:uid(), label:"Savings", planned:150, kind:"save", txns:[] },
+      { id:uid(), label:"Gas", planned:120, kind:"spend", txns:[] },
+      { id:uid(), label:"Groceries", planned:200, kind:"spend", txns:[] },
+      { id:uid(), label:"Miscellaneous", planned:0, kind:"spend", txns:[] },
+    ],
+  };
+}
+function loadBudget(monthKey){
+  const d = store.get(`ledger:${monthKey}`);
+  if(!d) return freshBudget(monthKey);
+  return d;
+}
+
+/* ===================== FLOAT DEFAULTS ===================== */
+const ALLOWANCE = 670;
+function freshFloat(){
+  return {
+    allowance: ALLOWANCE,
+    checkingNote: "Miscellaneous",
+    cards:[
+      { id:uid(), label:"Prime Visa", limit:1000, targetPct:20, charges:[],
+        allocations:[
+          { id:uid(), label:"Groceries", amount:200 },
+        ] },
+      { id:uid(), label:"Discover", limit:1500, targetPct:5, charges:[],
+        allocations:[
+          { id:uid(), label:"Gas", amount:75 },
+        ] },
+    ],
+    memberships:[
+      { id:uid(), label:"Amazon Prime", amount:7.49 },
+      { id:uid(), label:"Lagster", amount:3.43 },
+      { id:uid(), label:"Epic Games", amount:12.95 },
+      { id:uid(), label:"Twitch Turbo", amount:12 },
+      { id:uid(), label:"Uber One", amount:4.99 },
+      { id:uid(), label:"Claude", amount:20 },
+    ],
+    saves:[
+      { id:uid(), label:"Savings", amount:150 },
+      { id:uid(), label:"Brokerage", amount:20 },
+      { id:uid(), label:"Tithe", amount:67 },
+    ],
+  };
+}
+function loadFloat(monthKey){
+  const d = store.get(`allowance:${monthKey}`);
+  if(!d) return freshFloat();
+  if(!d.memberships) d.memberships = freshFloat().memberships;
+  if(!d.checkingNote) d.checkingNote = "Eating out";
+  d.cards.forEach(c=>{ if(!c.allocations) c.allocations = []; });
+  return d;
+}
+
+/* ===================== SHARED: MONTH STRIP ===================== */
+function MonthStrip({ monthKey, setMonthKey }){
+  const isToday = monthKey === todayKey();
+  return (
+    <div className="monthstrip">
+      <button className="arrow" onClick={()=>setMonthKey(addMonths(monthKey,-1))}>‹</button>
+      <div className="center">
+        <div className="mlabel">{labelOf(monthKey)}</div>
+        {!isToday && <button className="today" onClick={()=>setMonthKey(todayKey())}>Jump to today</button>}
+      </div>
+      <button className="arrow" onClick={()=>setMonthKey(addMonths(monthKey,1))}>›</button>
+    </div>
+  );
+}
+
+/* ===================== BUDGET (The Ledger) ===================== */
+function Budget({ monthKey, setMonthKey }){
+  const [data, setData] = useState(() => loadBudget(monthKey));
+  const first = useRef(true);
+
+  useEffect(() => { setData(loadBudget(monthKey)); first.current = true; }, [monthKey]);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    store.set(`ledger:${monthKey}`, data);
+  }, [data, monthKey]);
+
+  const totals = useMemo(() => {
+    const income = data.income.reduce((s,i)=>s+num(i.amount),0);
+    const planned = data.envelopes.reduce((s,e)=>s+num(e.planned),0);
+    const spent = data.envelopes.reduce((s,e)=>s+e.txns.reduce((t,x)=>t+num(x.amount),0),0);
+    return { income, planned, spent, balance: income-planned };
+  }, [data]);
+
+  const update = (fn) => setData((d) => { const c = JSON.parse(JSON.stringify(d)); fn(c); return c; });
+  const setIncome = (id,v) => update((d)=>{ const r=d.income.find(i=>i.id===id); if(r) r.amount=v; });
+  const setPlanned = (id,v) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.planned=v; });
+  const setEnvLabel = (id,v) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.label=v; });
+  const addEnvelope = () => update((d)=>d.envelopes.push({id:uid(),label:"New category",planned:0,kind:"spend",txns:[]}));
+  const delEnvelope = (id) => update((d)=>d.envelopes=d.envelopes.filter(e=>e.id!==id));
+  const addTxn = (envId,amt,label) => update((d)=>{ const e=d.envelopes.find(x=>x.id===envId); if(e && num(amt)!==0) e.txns.unshift({id:uid(),amount:num(amt),label:label||"Entry"}); });
+  const delTxn = (envId,txId) => update((d)=>{ const e=d.envelopes.find(x=>x.id===envId); if(e) e.txns=e.txns.filter(t=>t.id!==txId); });
+  const resetMonth = () => { if (window.confirm(`Reset ${labelOf(monthKey)} back to the starting plan?`)) setData(freshBudget(monthKey)); };
+
+  return (
+    <div>
+      <MonthStrip monthKey={monthKey} setMonthKey={setMonthKey} />
+
+      <div className="card">
+        <h3>Income</h3>
+        {data.income.map(i=>(
+          <div className="row" key={i.id}>
+            <div className="lbl">{i.label}</div>
+            <div className="val"><input type="number" value={i.amount} onChange={e=>setIncome(i.id,e.target.value)} /></div>
+          </div>
+        ))}
+        <div className="totalline"><span>Total income</span><b>{money(totals.income)}</b></div>
+      </div>
+
+      <div className="card">
+        <h3>Envelopes</h3>
+        {data.envelopes.map(e=>{
+          const spent = e.txns.reduce((s,t)=>s+num(t.amount),0);
+          const planned = num(e.planned);
+          const pct = planned>0 ? Math.min(100,(spent/planned)*100) : (spent>0?100:0);
+          const over = planned>0 && spent>planned;
+          return (
+            <div className="envelope" key={e.id}>
+              <div className="envhead">
+                <input className="lbl" style={{flex:1.4}} value={e.label} onChange={ev=>setEnvLabel(e.id,ev.target.value)} />
+                <div className="planned"><input type="number" value={e.planned} onChange={ev=>setPlanned(e.id,ev.target.value)} /></div>
+                <button className="del" onClick={()=>delEnvelope(e.id)}>×</button>
+              </div>
+              <div className="bar"><div style={{width:pct+"%", background: over?"var(--red)":"var(--gold)"}}></div></div>
+              <div className="envmeta">
+                <span>{money(spent)} of {money(planned)}</span>
+                <span style={{color: over?"var(--red)":"var(--text-dim)"}}>{over ? `Over by ${money(spent-planned)}` : `${money(planned-spent)} left`}</span>
+              </div>
+              <TxnLogger onAdd={(amt,label)=>addTxn(e.id,amt,label)} />
+              {e.txns.length>0 && (
+                <ul className="txns">{e.txns.map(t=>(
+                  <li key={t.id}><span>{t.label}</span><span style={{display:"flex",alignItems:"center",gap:6}}>{money(t.amount)}<button onClick={()=>delTxn(e.id,t.id)}>×</button></span></li>
+                ))}</ul>
+              )}
+            </div>
+          );
+        })}
+        <button className="addbtn" onClick={addEnvelope}>+ Add category</button>
+      </div>
+
+      <div className="card">
+        <div className="balancebox">
+          <div className="amt">{money(totals.balance)}</div>
+          <div className="sub">Left after envelopes (before spending)</div>
+        </div>
+      </div>
+
+      <div className="footerbar">
+        <button onClick={resetMonth}>Reset this month</button>
+      </div>
+    </div>
+  );
+}
+
+function TxnLogger({ onAdd }){
+  const [label, setLabel] = useState("");
+  const [amt, setAmt] = useState("");
+  const submit = () => { if(!amt) return; onAdd(amt, label); setLabel(""); setAmt(""); };
+  return (
+    <div className="logrow">
+      <input placeholder="What for?" value={label} onChange={e=>setLabel(e.target.value)} />
+      <input type="number" placeholder="0.00" value={amt} onChange={e=>setAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} />
+      <button onClick={submit}>Add</button>
+    </div>
+  );
+}
+
+/* ===================== FLOAT (The Float) ===================== */
+function Float({ monthKey, setMonthKey }){
+  const [data, setData] = useState(() => loadFloat(monthKey));
+  const first = useRef(true);
+
+  useEffect(() => { setData(loadFloat(monthKey)); first.current = true; }, [monthKey]);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    store.set(`allowance:${monthKey}`, data);
+  }, [data, monthKey]);
+
+  const totals = useMemo(() => {
+    const cardTargets = data.cards.reduce((s,c)=>s+num(c.limit)*(num(c.targetPct)/100),0);
+    const saves = data.saves.reduce((s,x)=>s+num(x.amount),0);
+    const memberships = data.memberships.reduce((s,x)=>s+num(x.amount),0);
+    const checking = num(data.allowance) - cardTargets - saves - memberships;
+    return { cardTargets, saves, memberships, checking };
+  }, [data]);
+
+  const update = (fn) => setData((d) => { const c = JSON.parse(JSON.stringify(d)); fn(c); return c; });
+  const setCardField = (id,field,v) => update(d=>{ const c=d.cards.find(x=>x.id===id); if(c) c[field]=v; });
+  const addCharge = (cardId,amt,label) => update(d=>{ const c=d.cards.find(x=>x.id===cardId); if(c && num(amt)!==0) c.charges.unshift({id:uid(),amount:num(amt),label:label||"Charge"}); });
+  const delCharge = (cardId,chId) => update(d=>{ const c=d.cards.find(x=>x.id===cardId); if(c) c.charges=c.charges.filter(t=>t.id!==chId); });
+  const setSave = (id,v) => update(d=>{ const s=d.saves.find(x=>x.id===id); if(s) s.amount=v; });
+  const setMembership = (id,v) => update(d=>{ const m=d.memberships.find(x=>x.id===id); if(m) m.amount=v; });
+  const setAllowance = (v) => update(d=>{ d.allowance = v; });
+  const resetMonth = () => { if (window.confirm(`Reset ${labelOf(monthKey)} back to the starting plan?`)) setData(freshFloat()); };
+
+  return (
+    <div>
+      <MonthStrip monthKey={monthKey} setMonthKey={setMonthKey} />
+
+      <div className="card">
+        <h3>Allowance</h3>
+        <div className="row">
+          <div className="lbl">Monthly allowance</div>
+          <div className="val"><input type="number" value={data.allowance} onChange={e=>setAllowance(e.target.value)} /></div>
+        </div>
+      </div>
+
+      {data.cards.map(c=>{
+        const spent = c.charges.reduce((s,t)=>s+num(t.amount),0);
+        const target = num(c.limit)*(num(c.targetPct)/100);
+        const pct = target>0 ? Math.min(100,(spent/target)*100) : 0;
+        const over = target>0 && spent>target;
+        const allocTotal = (c.allocations||[]).reduce((s,a)=>s+num(a.amount),0);
+        const fullyAssigned = Math.abs(allocTotal-target) < 0.01;
+        return (
+          <div className="card" key={c.id}>
+            <h3>{c.label}</h3>
+            <div className="row">
+              <div className="lbl">Limit</div>
+              <div className="val"><input type="number" value={c.limit} onChange={e=>setCardField(c.id,"limit",e.target.value)} /></div>
+            </div>
+            <div className="row">
+              <div className="lbl">Target %</div>
+              <div className="val"><input type="number" value={c.targetPct} onChange={e=>setCardField(c.id,"targetPct",e.target.value)} /></div>
+            </div>
+            <div className="bar"><div style={{width:pct+"%", background: over?"var(--red)":"var(--gold)"}}></div></div>
+            <div className="envmeta">
+              <span>{money(spent)} of {money(target)} target</span>
+              <span style={{color: over?"var(--red)":"var(--text-dim)"}}>{over ? `Over by ${money(spent-target)}` : `${money(target-spent)} left`}</span>
+            </div>
+            {c.allocations && c.allocations.length>0 && (
+              <div style={{marginTop:8, fontSize:12, color:"var(--text-dim)"}}>
+                Planned for: {c.allocations.map(a=>`${a.label} ${money(a.amount)}`).join(" · ")}
+                <span style={{color: fullyAssigned ? "var(--green)" : "var(--red)", marginLeft:6}}>
+                  {fullyAssigned ? "(fully assigned)" : `(${allocTotal>target?"over":"under"} by ${money(Math.abs(allocTotal-target))})`}
+                </span>
+              </div>
+            )}
+            <TxnLogger onAdd={(amt,label)=>addCharge(c.id,amt,label)} />
+            {c.charges.length>0 && (
+              <ul className="txns">{c.charges.map(t=>(
+                <li key={t.id}><span>{t.label}</span><span style={{display:"flex",alignItems:"center",gap:6}}>{money(t.amount)}<button onClick={()=>delCharge(c.id,t.id)}>×</button></span></li>
+              ))}</ul>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="card">
+        <h3>Memberships</h3>
+        {data.memberships.map(m=>(
+          <div className="row" key={m.id}>
+            <div className="lbl">{m.label}</div>
+            <div className="val"><input type="number" value={m.amount} onChange={e=>setMembership(m.id,e.target.value)} /></div>
+          </div>
+        ))}
+        <div className="totalline"><span>Total memberships</span><b>{money(totals.memberships)}</b></div>
+      </div>
+
+      <div className="card">
+        <h3>Savings &amp; Brokerage</h3>
+        {data.saves.map(s=>(
+          <div className="row" key={s.id}>
+            <div className="lbl">{s.label}</div>
+            <div className="val"><input type="number" value={s.amount} onChange={e=>setSave(s.id,e.target.value)} /></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="balancebox">
+          <div className="amt">{money(totals.checking)}</div>
+          <div className="sub">Left in checking{data.checkingNote ? ` · ${data.checkingNote}` : ""}</div>
+        </div>
+      </div>
+
+      <div className="footerbar">
+        <button onClick={resetMonth}>Reset this month</button>
+      </div>
+    </div>
+  );
+}
+
+/* ===================== PROGRESS OVERVIEW ===================== */
+function Progress({ which, jumpTo }){
+  const grade = which === "ledger" ? gradeLedger : gradeFloat;
+  const months = [];
+  let k = START_KEY;
+  const end = cmpKey(todayKey(), GRAD_KEY) > 0 ? todayKey() : GRAD_KEY;
+  while (cmpKey(k, end) <= 0) { months.push(k); k = addMonths(k,1); }
+  const tk = todayKey();
+
+  return (
+    <div className="card">
+      <h3>Progress · {which === "ledger" ? "The Ledger" : "The Float"}</h3>
+      <div className="progress-grid">
+        {months.map(mk=>{
+          const hue = grade(mk);
+          return (
+            <div key={mk} className={"pchip" + (mk===tk ? " current":"")} onClick={()=>jumpTo(mk)} style={{cursor:"pointer"}}>
+              <div className="dot" style={{background: hue===null ? "#3a3a3a" : hueToColor(hue)}}></div>
+              <div className="m">{labelOf(mk).split(" ")[0].slice(0,3)}</div>
+              <div style={{fontSize:10}}>{labelOf(mk).split(" ")[1]}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="legend">
+        <span><span className="dot" style={{background:hueToColor(125)}}></span>On plan</span>
+        <span><span className="dot" style={{background:hueToColor(60)}}></span>A little over</span>
+        <span><span className="dot" style={{background:hueToColor(10)}}></span>Way over</span>
+        <span><span className="dot" style={{background:"#3a3a3a"}}></span>No entries yet</span>
+      </div>
+    </div>
+  );
+}
+
+/* ===================== INSTALL BANNER (iOS Safari hint) ===================== */
+function InstallBanner(){
+  const [show, setShow] = useState(false);
+  useEffect(()=>{
+    const isStandalone = window.navigator.standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches;
+    const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+    const dismissed = store.get("installBannerDismissed");
+    if (isIos && !isStandalone && !dismissed) setShow(true);
+  },[]);
+  if(!show) return null;
+  return (
+    <div className="install-banner">
+      <div className="txt">Tap the Share icon, then "Add to Home Screen" to install this as an app on your phone.</div>
+      <button onClick={()=>{ store.set("installBannerDismissed", true); setShow(false); }}>Got it</button>
+    </div>
+  );
+}
+
+/* ===================== SHELL ===================== */
+function App(){
+  const [tab, setTab] = useState(() => store.get("activeTab") || "budget");
+  const [ledgerMonth, setLedgerMonth] = useState(() => store.get("ledgerMonth") || todayKey());
+  const [floatMonth, setFloatMonth] = useState(() => store.get("floatMonth") || todayKey());
+  const [showProgress, setShowProgress] = useState(false);
+
+  useEffect(() => { store.set("activeTab", tab); }, [tab]);
+  useEffect(() => { store.set("ledgerMonth", ledgerMonth); }, [ledgerMonth]);
+  useEffect(() => { store.set("floatMonth", floatMonth); }, [floatMonth]);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(()=>{});
+    }
+  }, []);
+
+  return (
+    <div className="shell">
+      <div className="switch">
+        <button className={tab==="budget"?"on":""} onClick={()=>{setTab("budget"); setShowProgress(false);}}>The Ledger</button>
+        <button className={tab==="float"?"on":""} onClick={()=>{setTab("float"); setShowProgress(false);}}>The Float</button>
+      </div>
+      <div className="tabs2">
+        <button className={!showProgress?"on":""} onClick={()=>setShowProgress(false)}>This month</button>
+        <button className={showProgress?"on":""} onClick={()=>setShowProgress(true)}>Progress</button>
+      </div>
+
+      {showProgress ? (
+        <Progress
+          which={tab}
+          jumpTo={(mk)=>{
+            if(tab==="budget") setLedgerMonth(mk); else setFloatMonth(mk);
+            setShowProgress(false);
+          }}
+        />
+      ) : tab==="budget" ? (
+        <Budget monthKey={ledgerMonth} setMonthKey={setLedgerMonth} />
+      ) : (
+        <Float monthKey={floatMonth} setMonthKey={setFloatMonth} />
+      )}
+
+      <InstallBanner />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
