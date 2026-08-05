@@ -146,10 +146,8 @@ const store = {
   set(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); } catch(e){} },
 };
 
-/* ===================== MONTH MATH (infinite, no fixed array) ===================== */
+/* ===================== MONTH MATH (fully unlimited, no start/end date) ===================== */
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const START_KEY = "2026-08";   // first tracked month
-const GRAD_KEY  = "2029-05";   // last tuition-bearing month (graduation)
 
 function keyOf(y,m){ return `${y}-${String(m).padStart(2,"0")}`; }
 function partsOf(key){ const [y,m] = key.split("-").map(Number); return {y,m}; }
@@ -164,12 +162,6 @@ function addMonths(key, n){
 function cmpKey(a,b){ return a === b ? 0 : (a < b ? -1 : 1); }
 function todayKey(){ const d = new Date(); return keyOf(d.getFullYear(), d.getMonth()+1); }
 function isDecember(key){ return key.endsWith("-12"); }
-function isTuitionMonth(key){
-  if (cmpKey(key, START_KEY) < 0) return false;
-  if (cmpKey(key, GRAD_KEY) > 0) return false;
-  if (isDecember(key)) return false;
-  return true;
-}
 
 const uid = () => Math.random().toString(36).slice(2,9);
 const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
@@ -219,22 +211,28 @@ function gradeFloat(monthKey){
 }
 
 /* ===================== LEDGER DEFAULTS ===================== */
+// Starting template — fully editable. Add/remove income rows and envelopes freely;
+// each envelope can optionally be flagged to skip in December (e.g. seasonal expenses).
 function freshBudget(monthKey){
-  const tuition = isTuitionMonth(monthKey) ? 1503.83 : 0;
+  const inDecember = isDecember(monthKey);
+  const mk = (label, planned, skipDecember) => ({
+    id:uid(), label, planned:(skipDecember && inDecember) ? 0 : planned, skipDecember: !!skipDecember, txns:[]
+  });
   return {
     income:[{ id:uid(), label:"Paycheck", amount:2135 }],
     envelopes:[
-      { id:uid(), label:"Tuition (20th)", planned:tuition, kind:"fixed", txns:[] },
-      { id:uid(), label:"Savings", planned:150, kind:"save", txns:[] },
-      { id:uid(), label:"Gas", planned:120, kind:"spend", txns:[] },
-      { id:uid(), label:"Groceries", planned:200, kind:"spend", txns:[] },
-      { id:uid(), label:"Miscellaneous", planned:0, kind:"spend", txns:[] },
+      mk("Savings", 150, false),
+      mk("Gas", 120, false),
+      mk("Groceries", 200, false),
+      mk("Miscellaneous", 0, false),
     ],
   };
 }
 function loadBudget(monthKey){
   const d = store.get(`ledger:${monthKey}`);
   if(!d) return freshBudget(monthKey);
+  d.envelopes.forEach(e=>{ if(typeof e.skipDecember === "undefined") e.skipDecember = false; });
+  if(!d.income) d.income = freshBudget(monthKey).income;
   return d;
 }
 
@@ -313,9 +311,13 @@ function Budget({ monthKey, setMonthKey }){
 
   const update = (fn) => setData((d) => { const c = JSON.parse(JSON.stringify(d)); fn(c); return c; });
   const setIncome = (id,v) => update((d)=>{ const r=d.income.find(i=>i.id===id); if(r) r.amount=v; });
+  const setIncomeLabel = (id,v) => update((d)=>{ const r=d.income.find(i=>i.id===id); if(r) r.label=v; });
+  const addIncome = () => update((d)=>d.income.push({id:uid(),label:"New income",amount:0}));
+  const delIncome = (id) => update((d)=>d.income=d.income.filter(i=>i.id!==id));
   const setPlanned = (id,v) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.planned=v; });
   const setEnvLabel = (id,v) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.label=v; });
-  const addEnvelope = () => update((d)=>d.envelopes.push({id:uid(),label:"New category",planned:0,kind:"spend",txns:[]}));
+  const toggleSkipDecember = (id) => update((d)=>{ const e=d.envelopes.find(x=>x.id===id); if(e) e.skipDecember = !e.skipDecember; });
+  const addEnvelope = () => update((d)=>d.envelopes.push({id:uid(),label:"New category",planned:0,skipDecember:false,txns:[]}));
   const delEnvelope = (id) => update((d)=>d.envelopes=d.envelopes.filter(e=>e.id!==id));
   const addTxn = (envId,amt,label) => update((d)=>{ const e=d.envelopes.find(x=>x.id===envId); if(e && num(amt)!==0) e.txns.unshift({id:uid(),amount:num(amt),label:label||"Entry"}); });
   const delTxn = (envId,txId) => update((d)=>{ const e=d.envelopes.find(x=>x.id===envId); if(e) e.txns=e.txns.filter(t=>t.id!==txId); });
@@ -329,10 +331,12 @@ function Budget({ monthKey, setMonthKey }){
         <h3>Income</h3>
         {data.income.map(i=>(
           <div className="row" key={i.id}>
-            <div className="lbl">{i.label}</div>
+            <input className="lbl" style={{flex:1.4}} value={i.label} onChange={e=>setIncomeLabel(i.id,e.target.value)} />
             <div className="val"><input type="number" value={i.amount} onChange={e=>setIncome(i.id,e.target.value)} /></div>
+            <button className="del" onClick={()=>delIncome(i.id)}>×</button>
           </div>
         ))}
+        <button className="addbtn" onClick={addIncome}>+ Add income source</button>
         <div className="totalline"><span>Total income</span><b>{money(totals.income)}</b></div>
       </div>
 
@@ -350,6 +354,10 @@ function Budget({ monthKey, setMonthKey }){
                 <div className="planned"><input type="number" value={e.planned} onChange={ev=>setPlanned(e.id,ev.target.value)} /></div>
                 <button className="del" onClick={()=>delEnvelope(e.id)}>×</button>
               </div>
+              <label style={{display:"flex", alignItems:"center", gap:6, fontSize:11, color:"var(--text-dim)", marginBottom:6}}>
+                <input type="checkbox" style={{width:"auto"}} checked={!!e.skipDecember} onChange={()=>toggleSkipDecember(e.id)} />
+                Skip this category in December
+              </label>
               <div className="bar"><div style={{width:pct+"%", background: over?"var(--red)":"var(--gold)"}}></div></div>
               <div className="envmeta">
                 <span>{money(spent)} of {money(planned)}</span>
@@ -417,9 +425,18 @@ function Float({ monthKey, setMonthKey }){
   const setCardField = (id,field,v) => update(d=>{ const c=d.cards.find(x=>x.id===id); if(c) c[field]=v; });
   const addCharge = (cardId,amt,label) => update(d=>{ const c=d.cards.find(x=>x.id===cardId); if(c && num(amt)!==0) c.charges.unshift({id:uid(),amount:num(amt),label:label||"Charge"}); });
   const delCharge = (cardId,chId) => update(d=>{ const c=d.cards.find(x=>x.id===cardId); if(c) c.charges=c.charges.filter(t=>t.id!==chId); });
+  const addCard = () => update(d=>d.cards.push({id:uid(),label:"New card",limit:0,targetPct:0,charges:[],allocations:[]}));
+  const delCard = (id) => update(d=>d.cards=d.cards.filter(c=>c.id!==id));
   const setSave = (id,v) => update(d=>{ const s=d.saves.find(x=>x.id===id); if(s) s.amount=v; });
+  const setSaveLabel = (id,v) => update(d=>{ const s=d.saves.find(x=>x.id===id); if(s) s.label=v; });
+  const addSave = () => update(d=>d.saves.push({id:uid(),label:"New allocation",amount:0}));
+  const delSave = (id) => update(d=>d.saves=d.saves.filter(s=>s.id!==id));
   const setMembership = (id,v) => update(d=>{ const m=d.memberships.find(x=>x.id===id); if(m) m.amount=v; });
+  const setMembershipLabel = (id,v) => update(d=>{ const m=d.memberships.find(x=>x.id===id); if(m) m.label=v; });
+  const addMembership = () => update(d=>d.memberships.push({id:uid(),label:"New membership",amount:0}));
+  const delMembership = (id) => update(d=>d.memberships=d.memberships.filter(m=>m.id!==id));
   const setAllowance = (v) => update(d=>{ d.allowance = v; });
+  const setCheckingNote = (v) => update(d=>{ d.checkingNote = v; });
   const resetMonth = () => { if (window.confirm(`Reset ${labelOf(monthKey)} back to the starting plan?`)) setData(freshFloat()); };
 
   return (
@@ -443,7 +460,10 @@ function Float({ monthKey, setMonthKey }){
         const fullyAssigned = Math.abs(allocTotal-target) < 0.01;
         return (
           <div className="card" key={c.id}>
-            <h3>{c.label}</h3>
+            <div className="row" style={{marginBottom:6}}>
+              <input className="lbl" style={{flex:1.4, fontWeight:700, color:"var(--gold)"}} value={c.label} onChange={e=>setCardField(c.id,"label",e.target.value)} />
+              <button className="del" onClick={()=>delCard(c.id)}>×</button>
+            </div>
             <div className="row">
               <div className="lbl">Limit</div>
               <div className="val"><input type="number" value={c.limit} onChange={e=>setCardField(c.id,"limit",e.target.value)} /></div>
@@ -475,31 +495,41 @@ function Float({ monthKey, setMonthKey }){
         );
       })}
 
+      <button className="addbtn" onClick={addCard} style={{marginBottom:14}}>+ Add card</button>
+
       <div className="card">
         <h3>Memberships</h3>
         {data.memberships.map(m=>(
           <div className="row" key={m.id}>
-            <div className="lbl">{m.label}</div>
+            <input className="lbl" style={{flex:1.4}} value={m.label} onChange={e=>setMembershipLabel(m.id,e.target.value)} />
             <div className="val"><input type="number" value={m.amount} onChange={e=>setMembership(m.id,e.target.value)} /></div>
+            <button className="del" onClick={()=>delMembership(m.id)}>×</button>
           </div>
         ))}
+        <button className="addbtn" onClick={addMembership}>+ Add membership</button>
         <div className="totalline"><span>Total memberships</span><b>{money(totals.memberships)}</b></div>
       </div>
 
       <div className="card">
-        <h3>Savings &amp; Brokerage</h3>
+        <h3>Savings &amp; Other Allocations</h3>
         {data.saves.map(s=>(
           <div className="row" key={s.id}>
-            <div className="lbl">{s.label}</div>
+            <input className="lbl" style={{flex:1.4}} value={s.label} onChange={e=>setSaveLabel(s.id,e.target.value)} />
             <div className="val"><input type="number" value={s.amount} onChange={e=>setSave(s.id,e.target.value)} /></div>
+            <button className="del" onClick={()=>delSave(s.id)}>×</button>
           </div>
         ))}
+        <button className="addbtn" onClick={addSave}>+ Add allocation</button>
       </div>
 
       <div className="card">
         <div className="balancebox">
           <div className="amt">{money(totals.checking)}</div>
-          <div className="sub">Left in checking{data.checkingNote ? ` · ${data.checkingNote}` : ""}</div>
+          <div className="sub">Left in checking</div>
+        </div>
+        <div className="row" style={{marginTop:8}}>
+          <div className="lbl">Label this leftover</div>
+          <div className="val"><input value={data.checkingNote||""} onChange={e=>setCheckingNote(e.target.value)} /></div>
         </div>
       </div>
 
@@ -511,13 +541,28 @@ function Float({ monthKey, setMonthKey }){
 }
 
 /* ===================== PROGRESS OVERVIEW ===================== */
+function monthsWithData(prefix){
+  const keys = new Set();
+  for (let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if (key && key.startsWith(prefix)) keys.add(key.slice(prefix.length));
+  }
+  return keys;
+}
 function Progress({ which, jumpTo }){
   const grade = which === "ledger" ? gradeLedger : gradeFloat;
-  const months = [];
-  let k = START_KEY;
-  const end = cmpKey(todayKey(), GRAD_KEY) > 0 ? todayKey() : GRAD_KEY;
-  while (cmpKey(k, end) <= 0) { months.push(k); k = addMonths(k,1); }
+  const prefix = which === "ledger" ? "ledger:" : "allowance:";
   const tk = todayKey();
+  const found = Array.from(monthsWithData(prefix));
+  found.push(tk); // always include current month even if not logged yet
+  const uniqueSorted = Array.from(new Set(found)).sort((a,b)=>cmpKey(a,b));
+  // fill any gaps between earliest and latest so the grid reads as a continuous timeline
+  const months = [];
+  if (uniqueSorted.length){
+    let k = uniqueSorted[0];
+    const last = uniqueSorted[uniqueSorted.length-1];
+    while (cmpKey(k,last) <= 0){ months.push(k); k = addMonths(k,1); }
+  }
 
   return (
     <div className="card">
